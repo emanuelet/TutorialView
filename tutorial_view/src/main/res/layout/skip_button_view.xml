@@ -3,8 +3,9 @@
     android:id="@+id/skip_button_view"
     android:layout_width="wrap_content"
     android:layout_height="wrap_content"
-    android:fontFamily="sans-serif-light"
+    android:fontFamily="sans-serif"
     android:padding="10dp"
     android:text="@string/skip_button_text"
     android:textColor="@android:color/white"
-    android:textSize="21sp" />
+    android:textSize="21sp"
+    android:textStyle="bold" />
