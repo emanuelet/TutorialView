@@ -31,11 +31,9 @@ import java.util.Random;
  */
 public abstract class AbstractTutorialView extends RelativeLayout implements TutorialViewInterface {
 
-    protected static final boolean DEBUG_DRAW = false;
-
     public static final String TAG = AbstractTutorialView.class.getSimpleName();
     public static final boolean DEBUG = false;
-
+    protected static final boolean DEBUG_DRAW = false;
     protected static final int DEFAULT_BACKGROUND_COLOR = Color.BLUE;
 
     protected static final int DEFAULT_PRECAUTION_ABOVE_DISTANCE = 5, DEFAULT_CIRCLE_PADDING = 40, INNER_CIRCLE_DEFAULT_ALPHA = 140, DEFAULT_STROKE_WIDTH = 13;
@@ -44,100 +42,306 @@ public abstract class AbstractTutorialView extends RelativeLayout implements Tut
      * Default animation duration that is used to animate the tutorial in and out.
      */
     private static final int DEFAULT_ANIM_DURATION = 600;
-
+    /**
+     * OnClickListener for hiding the tutorial when clicked.
+     */
+    private final OnClickListener closeTutorialClickListener = new OnClickListener() {
+        @Override
+        public void onClick(View v) {
+            closeTutorial();
+        }
+    };
+    /**
+     * OnClickListener for skipping the walk through tutorial.
+     */
+    private final OnClickListener skipWalkThroughClickListener = new OnClickListener() {
+        @Override
+        public void onClick(View v) {
+            ((WalkThroughInterface) getParent()).skip();
+        }
+    };
     protected int mViewToSurroundCenterX = 0, mViewToSurroundCenterY = 0, mViewToSurroundRadius = 0;
-
     protected int statusBarHeight = 0, actionBarHeight = 0;
-
     protected View mTutorialInfoView, mGotItButton, mSkipButton, mTitleView;
-
     protected Tutorial mTutorial;
+    /**
+     * Posted on the tutorial info view to do adjustment and animation to the view.
+     */
+    private final Runnable tutorialInfoViewPost = new Runnable() {
 
+        RelativeLayout.LayoutParams skipButtonParams = null;
+        RelativeLayout.LayoutParams titleParams = null;
+        RelativeLayout.LayoutParams gotItButtonParams;
+
+        boolean isTopHalf, isLeft;
+
+        @Override
+        public void run() {
+
+            // for deciding where to place views.
+            isTopHalf = mViewToSurroundCenterY < getMeasuredHeight() / 2;
+            isLeft = mViewToSurroundCenterX < getMeasuredWidth() / 2;
+
+            // Got it button basic params
+            gotItButtonParams = new LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            gotItButtonParams.addRule(CENTER_HORIZONTAL);
+
+            // Init the skip button params if has skip button.
+            if (mSkipButton != null)
+                skipButtonParams = new LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+
+            // Setting the layout params of the title view if needed.
+            initTitle();
+
+            setInfoPosition();
+
+            setGotItButtonPosition();
+
+            if (mTitleView != null) {
+                addView(mTitleView, titleParams);
+            }
+
+            addView(mGotItButton, gotItButtonParams);
+            mGotItButton.setOnClickListener(closeTutorialClickListener);
+
+            // Add the skip button to the view if needed.
+            placeAndAddSkipButton();
+
+            // Start the entrance animation.
+            animate();
+        }
+
+        /**
+         * Placing the TutorialInfoView according to the position set in the Tutorial object,
+         */
+        private void setInfoPosition() {
+            LayoutParams p;
+            switch (mTutorial.getTutorialInfoTextPosition()) {
+                case Tutorial.InfoPosition.AUTO:
+                    autoInfoPosition();
+                    break;
+
+                case Tutorial.InfoPosition.ABOVE:
+                    placeInfoAbove();
+                    break;
+
+                case Tutorial.InfoPosition.BELOW:
+                    placeInfoBelow();
+                    break;
+
+                case Tutorial.InfoPosition.RIGHT_OF:
+                    alignInfoTopToViewTop();
+
+                    // Setting the X value to the right of the view to surround
+                    mTutorialInfoView.setX(mViewToSurroundCenterX + mViewToSurroundRadius + DEFAULT_PRECAUTION_ABOVE_DISTANCE * getResources().getDisplayMetrics().density);
+
+                    // Setting the width of the view to be as the remainder from the right of the view to surround.
+                    // This adjustment make sure that all text is visible to the user.
+                    p = (LayoutParams) mTutorialInfoView.getLayoutParams();
+                    p.width = getMeasuredWidth() - mViewToSurroundCenterX - mViewToSurroundRadius;
+                    mTutorialInfoView.setLayoutParams(p);
+
+                    break;
+
+                case Tutorial.InfoPosition.LEFT_OF:
+                    alignInfoTopToViewTop();
+
+                    // Setting the width of the view to be as the remainder from the left of the view to surround.
+                    // This adjustment make sure that all text is visible to the user.
+                    p = (LayoutParams) mTutorialInfoView.getLayoutParams();
+                    p.width = (int) (mViewToSurroundCenterX - mViewToSurroundRadius - DEFAULT_PRECAUTION_ABOVE_DISTANCE * getResources().getDisplayMetrics().density);
+                    mTutorialInfoView.setLayoutParams(p);
+
+                    // Setting the info text X value to the most left.
+                    mTutorialInfoView.setX(0);
+                    break;
+            }
+
+        }
+
+        /**
+         * Placing the "GotIt" Button according to the position set in the Tutorial object,
+         */
+        private void setGotItButtonPosition() {
+            switch (mTutorial.getTutorialGotItPosition()) {
+                case Tutorial.GotItPosition.AUTO:
+                    autoOtherViewsPosition();
+                    break;
+
+                case Tutorial.GotItPosition.BOTTOM:
+                    gotItButtonParams.addRule(ALIGN_PARENT_BOTTOM);
+
+                    if (skipButtonParams != null)
+                        skipButtonParams.addRule(ALIGN_PARENT_BOTTOM);
+                    break;
+
+                case Tutorial.GotItPosition.TOP:
+                    // Placing the got it button below the title.
+                    if (mTitleView != null)
+                        gotItButtonParams.addRule(BELOW, mTitleView.getId());
+                    else
+                        gotItButtonParams.addRule(ALIGN_PARENT_TOP);
+
+                    if (skipButtonParams != null)
+                        skipButtonParams.addRule(ALIGN_PARENT_TOP);
+                    break;
+            }
+        }
+
+        /**
+         * Auto positioning of the info view - Default behavior.
+         */
+        private void autoInfoPosition() {
+            // The view to surround is in the top half of the screen so the info will be below it.
+            if (isTopHalf) {
+                placeInfoAbove();
+            }
+            // The view to surround is in the bottom half of the screen.
+            else {
+                placeInfoAbove();
+            }
+        }
+
+        /**
+         * Auto positioning of the other views ("GotIt", "Skip" and the "Title") - Default behavior.
+         */
+        private void autoOtherViewsPosition() {
+            // The view to surround is in the top half of the screen so the info will be below it.
+            if (isTopHalf) {
+                gotItButtonParams.addRule(ALIGN_PARENT_BOTTOM);
+
+                if (skipButtonParams != null)
+                    skipButtonParams.addRule(ALIGN_PARENT_TOP);
+            }
+            // The view to surround is in the bottom half of the screen.
+            else {
+                // Placing the got it button below the title.
+                if (mTitleView != null)
+                    gotItButtonParams.addRule(BELOW, mTitleView.getId());
+                else
+                    gotItButtonParams.addRule(ALIGN_PARENT_TOP);
+
+                if (skipButtonParams != null)
+                    skipButtonParams.addRule(ALIGN_PARENT_BOTTOM);
+            }
+        }
+
+        /**
+         * Align the info text to the top of the surrounding view.
+         */
+        private void alignInfoTopToViewTop() {
+            mTutorialInfoView.setY(mViewToSurroundCenterY - mViewToSurroundRadius - statusBarHeight - actionBarHeight);
+        }
+
+        /**
+         * Placing the info view above the view to surround.
+         */
+        private void placeInfoAbove() {
+            mTutorialInfoView.setY(mViewToSurroundCenterY - mViewToSurroundRadius -
+                    mTutorialInfoView.getMeasuredHeight() - mTutorialInfoView.getPaddingTop()
+                    - mTutorialInfoView.getPaddingBottom() - statusBarHeight - actionBarHeight
+                    - DEFAULT_PRECAUTION_ABOVE_DISTANCE * getResources().getDisplayMetrics().density);
+        }
+
+        /**
+         * Placing the info view below the view to surround.
+         */
+        private void placeInfoBelow() {
+            mTutorialInfoView.setY(mViewToSurroundCenterY + mViewToSurroundRadius - statusBarHeight - actionBarHeight);
+        }
+
+        private void initTitle() {
+            if (mTitleView != null) {
+                titleParams = new LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                titleParams.addRule(ALIGN_PARENT_TOP);
+                titleParams.addRule(CENTER_HORIZONTAL);
+            }
+        }
+
+        private void placeAndAddSkipButton() {
+            if (skipButtonParams != null) {
+                // Checking if the view to surround is in the left or right part of the screen.
+                if (isLeft) {
+                    skipButtonParams.addRule(ALIGN_PARENT_RIGHT);
+                }
+                // The view to surround is in the bottom half of the screen.
+                else {
+                    skipButtonParams.addRule(ALIGN_PARENT_LEFT);
+                }
+
+                addView(mSkipButton, skipButtonParams);
+                mSkipButton.setOnClickListener(skipWalkThroughClickListener);
+            }
+        }
+
+        /**
+         * Staring the animation for the views.
+         */
+        private void animate() {
+            // Animating the views in
+            Animation animation = AnimationUtils.loadAnimation(getContext(), R.anim.tutorial_info_view_fade_in);
+
+            mTutorialInfoView.setAnimation(animation);
+            mGotItButton.setAnimation(animation);
+
+            if (mSkipButton != null) mSkipButton.setAnimation(animation);
+
+            if (mTitleView != null) mTitleView.setAnimation(animation);
+
+            animation.start();
+        }
+    };
     /**
      * The paint that will be used to draw the tutorial background color.
      */
     protected Paint mBackgroundPaint;
-
     /**
      * Used for debug drawing to find problems with calculations.
      */
     protected Paint debugPaint;
-
     /**
      * The paint that will be used to draw the inner circles.
      */
     protected Paint mInnerCirclePaint;
-
     /**
      * true if the tutorial is visible.
      */
     protected boolean showing = false;
-
     /**
      * true if the tutorial is animating closing of the tutorial.
      * <p/>
      * Good for checking checking if we should do close operation or we are in the middle of was.
      */
     protected boolean closing = false;
-
     protected ActionBar mActionBar;
-
     /**
      * If true when the tutorial view will be visible the action bar color will be change to the tutorial background color
      */
     protected boolean mChangeActionBarColor = false;
-
     /**
      * The default color of the action bar,
      * This is used combine with mChangeActionBarColor
      * to set the background of the action bar to the tutorial color.
      */
     protected int mActionBarRestoreColor = -1;
-
     /**
      * The title of the action bar before we changed it to the tutorial title,
      * Used for restoring the action bar state after tutorial is closed.
      */
     protected String mActionBarOldTitle = "";
-
     /**
      * Listener for the tutorial closing.
      */
     protected TutorialClosedListener tutorialClosedListener;
-
     /**
      * Holds the view bounds on screen,
      * This is used for DEBUG_DRAW and for creating the arcs surrounding the view.
      */
     protected RectF mViewBoundsInParent;
-
     /**
      * Holds the typeface that will be used for the default info view text view
      */
     protected Typeface mTutorialTextTypeFace = null;
-
-    /**
-     * Animation type that are supported by the tutorial view.
-     */
-    public enum AnimationType {
-        RANDOM,
-        FROM_TOP,
-        FROM_BOTTOM,
-        FROM_RIGHT,
-        FROM_LEFT,
-        FROM_TOP_RIGHT,
-        FROM_TOP_LEFT,
-        FROM_BOTTOM_RIGHT,
-        FROM_BOTTOM_LEFT,
-        FROM_VIEW_TO_SURROUND;
-
-        private static final Random random = new Random();
-
-        public static AnimationType getRandom() {
-            // Skipping random
-            return values()[random.nextInt(values().length - 1) + 1];
-        }
-    }
 
     public AbstractTutorialView(Context context) {
         super(context);
@@ -154,10 +358,6 @@ public abstract class AbstractTutorialView extends RelativeLayout implements Tut
         init();
     }
 
-    public interface TutorialClosedListener {
-        public void onClosed();
-    }
-
     public abstract void closeTutorial();
 
     /**
@@ -170,7 +370,6 @@ public abstract class AbstractTutorialView extends RelativeLayout implements Tut
     public abstract Animation show(Runnable onShown);
 
     public abstract Animation hide(Runnable onHidden);
-
 
     private void init() {
 
@@ -355,7 +554,7 @@ public abstract class AbstractTutorialView extends RelativeLayout implements Tut
             }
         }
 
-        // Inflating the Title for the tutorial if has any. 
+        // Inflating the Title for the tutorial if has any.
         if (mTutorial.getTitle() != null && !mTutorial.getTitle().isEmpty()) {
             mTitleView = inflate(getContext(), R.layout.title_view, null);
             ((TextView) mTitleView).setTextColor(mTutorial.getTutorialTextColor());
@@ -508,38 +707,10 @@ public abstract class AbstractTutorialView extends RelativeLayout implements Tut
     }
 
     /**
-     * OnClickListener for hiding the tutorial when clicked.
-     */
-    private final OnClickListener closeTutorialClickListener = new OnClickListener() {
-        @Override
-        public void onClick(View v) {
-            closeTutorial();
-        }
-    };
-
-    /**
-     * OnClickListener for skipping the walk through tutorial.
-     */
-    private final OnClickListener skipWalkThroughClickListener = new OnClickListener() {
-        @Override
-        public void onClick(View v) {
-            ((WalkThroughInterface) getParent()).skip();
-        }
-    };
-
-    /**
      * No need to draw if the view to surround or his dimensions is null.
      */
     protected boolean shouldDraw() {
         return mTutorial != null && mTutorial.getPositionToSurroundHeight() != -1 && mTutorial.getPositionToSurroundWidth() != -1;
-    }
-
-    /**
-     * The Layout id of the view that will be used to show the tutorial text or information.
-     */
-    @Override
-    public void setTutorialInfoLayoutId(int tutorialInfoLayoutId) {
-        this.mTutorial.setTutorialInfoLayoutId(tutorialInfoLayoutId);
     }
 
     @Override
@@ -550,16 +721,6 @@ public abstract class AbstractTutorialView extends RelativeLayout implements Tut
     @Override
     public void setTutorialClosedListener(TutorialClosedListener tutorialClosedListener) {
         this.tutorialClosedListener = tutorialClosedListener;
-    }
-
-    /**
-     * The background color for the tutorial.
-     */
-    @Override
-    public void setTutorialBackgroundColor(int mTutorialBackgroundColor) {
-        mTutorial.setTutorialBackgroundColor(mTutorialBackgroundColor);
-        mBackgroundPaint.setColor(mTutorialBackgroundColor);
-        mInnerCirclePaint.setColor(mTutorialBackgroundColor);
     }
 
     /**
@@ -611,6 +772,74 @@ public abstract class AbstractTutorialView extends RelativeLayout implements Tut
         actionBarHeight = hasActionBar ? getActionBarHeight() : 0;
     }
 
+    private int getActionBarHeight() {
+        // Calculate ActionBar height
+        TypedValue tv = new TypedValue();
+        int actionBarHeight = 0;
+        if (getContext().getTheme().resolveAttribute(android.R.attr.actionBarSize, tv, true)) {
+            actionBarHeight = TypedValue.complexToDimensionPixelSize(tv.data, getResources().getDisplayMetrics());
+        }
+
+        return actionBarHeight;
+    }
+
+    @Override
+    public boolean isShowing() {
+        return showing;
+    }
+
+    public long getAnimationDuration() {
+        return mTutorial.getAnimationDuration() == -1 ? DEFAULT_ANIM_DURATION : mTutorial.getAnimationDuration();
+    }
+
+    @Override
+    public void setAnimationDuration(long animationDuration) {
+        this.mTutorial.setAnimationDuration(animationDuration);
+    }
+
+    @Override
+    public AnimationType getAnimationType() {
+        return mTutorial.getAnimationType();
+    }
+
+    @Override
+    public void setAnimationType(AnimationType mAnimationType) {
+        this.mTutorial.setAnimationType(mAnimationType);
+    }
+
+    @Override
+    public int getTutorialInfoLayoutId() {
+        return mTutorial.getTutorialInfoLayoutId();
+    }
+
+    /**
+     * The Layout id of the view that will be used to show the tutorial text or information.
+     */
+    @Override
+    public void setTutorialInfoLayoutId(int tutorialInfoLayoutId) {
+        this.mTutorial.setTutorialInfoLayoutId(tutorialInfoLayoutId);
+    }
+
+    @Override
+    public int getTutorialBackgroundColor() {
+        return mTutorial.getTutorialBackgroundColor();
+    }
+
+    /**
+     * The background color for the tutorial.
+     */
+    @Override
+    public void setTutorialBackgroundColor(int mTutorialBackgroundColor) {
+        mTutorial.setTutorialBackgroundColor(mTutorialBackgroundColor);
+        mBackgroundPaint.setColor(mTutorialBackgroundColor);
+        mInnerCirclePaint.setColor(mTutorialBackgroundColor);
+    }
+
+    @Override
+    public String getTutorialText() {
+        return mTutorial.getTutorialText();
+    }
+
     /**
      * The text that will be used for the {@link TutorialView#mTutorialInfoView mTutorialInfoView}.
      * <b>Only</b> if the layout that is used is the default layout ({@link com.braunster.tutorialview.R.layout#tutorial_text tutorial_text}).
@@ -624,15 +853,9 @@ public abstract class AbstractTutorialView extends RelativeLayout implements Tut
         this.mTutorial.setTutorialText(tutorialText);
     }
 
-    private int getActionBarHeight() {
-        // Calculate ActionBar height
-        TypedValue tv = new TypedValue();
-        int actionBarHeight = 0;
-        if (getContext().getTheme().resolveAttribute(android.R.attr.actionBarSize, tv, true)) {
-            actionBarHeight = TypedValue.complexToDimensionPixelSize(tv.data, getResources().getDisplayMetrics());
-        }
-
-        return actionBarHeight;
+    @Override
+    public int getTutorialTextSize() {
+        return mTutorial.getTutorialTextSize();
     }
 
     /**
@@ -648,6 +871,11 @@ public abstract class AbstractTutorialView extends RelativeLayout implements Tut
         this.mTutorial.setTutorialTextSize(mTutorialTextSize);
     }
 
+    @Override
+    public int getTutorialTextColor() {
+        return mTutorial.getTutorialTextColor();
+    }
+
     /**
      * Set the color that will be used for the default info view text view.
      * <p/>
@@ -660,6 +888,11 @@ public abstract class AbstractTutorialView extends RelativeLayout implements Tut
     @Override
     public void setTutorialTextColor(int mTutorialTextColor) {
         this.mTutorial.setTutorialTextColor(mTutorialTextColor);
+    }
+
+    @Override
+    public String getTutorialTextTypeFace() {
+        return mTutorial.getTutorialTextTypeFace();
     }
 
     /**
@@ -684,67 +917,13 @@ public abstract class AbstractTutorialView extends RelativeLayout implements Tut
     }
 
     @Override
-    public boolean isShowing() {
-        return showing;
-    }
-
-    @Override
-    public void setAnimationType(AnimationType mAnimationType) {
-        this.mTutorial.setAnimationType(mAnimationType);
-    }
-
-    @Override
-    public void setAnimationDuration(long animationDuration) {
-        this.mTutorial.setAnimationDuration(animationDuration);
-    }
-
-    public long getAnimationDuration() {
-        return mTutorial.getAnimationDuration() == -1 ? DEFAULT_ANIM_DURATION : mTutorial.getAnimationDuration();
-    }
-
-    @Override
-    public AnimationType getAnimationType() {
-        return mTutorial.getAnimationType();
-    }
-
-    @Override
-    public int getTutorialInfoLayoutId() {
-        return mTutorial.getTutorialInfoLayoutId();
-    }
-
-    @Override
-    public int getTutorialBackgroundColor() {
-        return mTutorial.getTutorialBackgroundColor();
-    }
-
-    @Override
-    public String getTutorialText() {
-        return mTutorial.getTutorialText();
-    }
-
-    @Override
-    public int getTutorialTextSize() {
-        return mTutorial.getTutorialTextSize();
-    }
-
-    @Override
-    public int getTutorialTextColor() {
-        return mTutorial.getTutorialTextColor();
-    }
-
-    @Override
-    public String getTutorialTextTypeFace() {
-        return mTutorial.getTutorialTextTypeFace();
+    public int getTutorialInfoTextPosition() {
+        return mTutorial.getTutorialInfoTextPosition();
     }
 
     @Override
     public void setTutorialInfoTextPosition(int infoTextPosition) {
         mTutorial.setTutorialInfoTextPosition(infoTextPosition);
-    }
-
-    @Override
-    public int getTutorialInfoTextPosition() {
-        return mTutorial.getTutorialInfoTextPosition();
     }
 
     @Override
@@ -765,229 +944,29 @@ public abstract class AbstractTutorialView extends RelativeLayout implements Tut
     }
 
     /**
-     * Posted on the tutorial info view to do adjustment and animation to the view.
+     * Animation type that are supported by the tutorial view.
      */
-    private final Runnable tutorialInfoViewPost = new Runnable() {
+    public enum AnimationType {
+        RANDOM,
+        FROM_TOP,
+        FROM_BOTTOM,
+        FROM_RIGHT,
+        FROM_LEFT,
+        FROM_TOP_RIGHT,
+        FROM_TOP_LEFT,
+        FROM_BOTTOM_RIGHT,
+        FROM_BOTTOM_LEFT,
+        FROM_VIEW_TO_SURROUND;
 
-        RelativeLayout.LayoutParams skipButtonParams = null;
-        RelativeLayout.LayoutParams titleParams = null;
-        RelativeLayout.LayoutParams gotItButtonParams;
+        private static final Random random = new Random();
 
-        boolean isTopHalf, isLeft;
-
-        @Override
-        public void run() {
-
-            // for deciding where to place views.
-            isTopHalf = mViewToSurroundCenterY < getMeasuredHeight() / 2;
-            isLeft = mViewToSurroundCenterX < getMeasuredWidth() / 2;
-
-            // Got it button basic params
-            gotItButtonParams = new LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            gotItButtonParams.addRule(CENTER_HORIZONTAL);
-
-            // Init the skip button params if has skip button.
-            if (mSkipButton != null)
-                skipButtonParams = new LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-
-            // Setting the layout params of the title view if needed.
-            initTitle();
-
-            setInfoPosition();
-
-            setGotItButtonPosition();
-
-            if (mTitleView != null) {
-                addView(mTitleView, titleParams);
-            }
-
-            addView(mGotItButton, gotItButtonParams);
-            mGotItButton.setOnClickListener(closeTutorialClickListener);
-
-            // Add the skip button to the view if needed.
-            placeAndAddSkipButton();
-
-            // Start the entrance animation.
-            animate();
+        public static AnimationType getRandom() {
+            // Skipping random
+            return values()[random.nextInt(values().length - 1) + 1];
         }
+    }
 
-        /**
-         * Placing the TutorialInfoView according to the position set in the Tutorial object,
-         **/
-        private void setInfoPosition() {
-            LayoutParams p;
-            switch (mTutorial.getTutorialInfoTextPosition()) {
-                case Tutorial.InfoPosition.AUTO:
-                    autoInfoPosition();
-                    break;
-
-                case Tutorial.InfoPosition.ABOVE:
-                    placeInfoAbove();
-                    break;
-
-                case Tutorial.InfoPosition.BELOW:
-                    placeInfoBelow();
-                    break;
-
-                case Tutorial.InfoPosition.RIGHT_OF:
-                    alignInfoTopToViewTop();
-
-                    // Setting the X value to the right of the view to surround
-                    mTutorialInfoView.setX(mViewToSurroundCenterX + mViewToSurroundRadius + DEFAULT_PRECAUTION_ABOVE_DISTANCE * getResources().getDisplayMetrics().density);
-
-                    // Setting the width of the view to be as the remainder from the right of the view to surround.
-                    // This adjustment make sure that all text is visible to the user.
-                    p = (LayoutParams) mTutorialInfoView.getLayoutParams();
-                    p.width = getMeasuredWidth() - mViewToSurroundCenterX - mViewToSurroundRadius;
-                    mTutorialInfoView.setLayoutParams(p);
-
-                    break;
-
-                case Tutorial.InfoPosition.LEFT_OF:
-                    alignInfoTopToViewTop();
-
-                    // Setting the width of the view to be as the remainder from the left of the view to surround.
-                    // This adjustment make sure that all text is visible to the user.
-                    p = (LayoutParams) mTutorialInfoView.getLayoutParams();
-                    p.width = (int) (mViewToSurroundCenterX - mViewToSurroundRadius - DEFAULT_PRECAUTION_ABOVE_DISTANCE * getResources().getDisplayMetrics().density);
-                    mTutorialInfoView.setLayoutParams(p);
-
-                    // Setting the info text X value to the most left.
-                    mTutorialInfoView.setX(0);
-                    break;
-            }
-
-        }
-
-        /**
-         * Placing the "GotIt" Button according to the position set in the Tutorial object,
-         **/
-        private void setGotItButtonPosition() {
-            switch (mTutorial.getTutorialGotItPosition()) {
-                case Tutorial.GotItPosition.AUTO:
-                    autoOtherViewsPosition();
-                    break;
-
-                case Tutorial.GotItPosition.BOTTOM:
-                    gotItButtonParams.addRule(ALIGN_PARENT_BOTTOM);
-
-                    if (skipButtonParams != null)
-                        skipButtonParams.addRule(ALIGN_PARENT_TOP);
-                    break;
-
-                case Tutorial.GotItPosition.TOP:
-                    // Placing the got it button below the title.
-                    if (mTitleView != null)
-                        gotItButtonParams.addRule(BELOW, mTitleView.getId());
-                    else
-                        gotItButtonParams.addRule(ALIGN_PARENT_TOP);
-
-                    if (skipButtonParams != null) skipButtonParams.addRule(ALIGN_PARENT_BOTTOM);
-                    break;
-            }
-        }
-
-        /**
-         * Auto positioning of the info view - Default behavior.
-         **/
-        private void autoInfoPosition() {
-            // The view to surround is in the top half of the screen so the info will be below it.
-            if (isTopHalf) {
-                placeInfoAbove();
-            }
-            // The view to surround is in the bottom half of the screen.
-            else {
-                placeInfoAbove();
-            }
-        }
-
-        /**
-         * Auto positioning of the other views ("GotIt", "Skip" and the "Title") - Default behavior.
-         **/
-        private void autoOtherViewsPosition() {
-            // The view to surround is in the top half of the screen so the info will be below it.
-            if (isTopHalf) {
-                gotItButtonParams.addRule(ALIGN_PARENT_BOTTOM);
-
-                if (skipButtonParams != null)
-                    skipButtonParams.addRule(ALIGN_PARENT_TOP);
-            }
-            // The view to surround is in the bottom half of the screen.
-            else {
-                // Placing the got it button below the title.
-                if (mTitleView != null)
-                    gotItButtonParams.addRule(BELOW, mTitleView.getId());
-                else
-                    gotItButtonParams.addRule(ALIGN_PARENT_TOP);
-
-                if (skipButtonParams != null)
-                    skipButtonParams.addRule(ALIGN_PARENT_BOTTOM);
-            }
-        }
-
-        /**
-         * Align the info text to the top of the surrounding view.
-         **/
-        private void alignInfoTopToViewTop() {
-            mTutorialInfoView.setY(mViewToSurroundCenterY - mViewToSurroundRadius - statusBarHeight - actionBarHeight);
-        }
-
-        /**
-         * Placing the info view above the view to surround.
-         **/
-        private void placeInfoAbove() {
-            mTutorialInfoView.setY(mViewToSurroundCenterY - mViewToSurroundRadius -
-                    mTutorialInfoView.getMeasuredHeight() - mTutorialInfoView.getPaddingTop()
-                    - mTutorialInfoView.getPaddingBottom() - statusBarHeight - actionBarHeight
-                    - DEFAULT_PRECAUTION_ABOVE_DISTANCE * getResources().getDisplayMetrics().density);
-        }
-
-        /**
-         * Placing the info view below the view to surround.
-         **/
-        private void placeInfoBelow() {
-            mTutorialInfoView.setY(mViewToSurroundCenterY + mViewToSurroundRadius - statusBarHeight - actionBarHeight);
-        }
-
-        private void initTitle() {
-            if (mTitleView != null) {
-                titleParams = new LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-                titleParams.addRule(ALIGN_PARENT_TOP);
-                titleParams.addRule(CENTER_HORIZONTAL);
-            }
-        }
-
-        private void placeAndAddSkipButton() {
-            if (skipButtonParams != null) {
-                // Checking if the view to surround is in the left or right part of the screen.
-                if (isLeft) {
-                    skipButtonParams.addRule(ALIGN_PARENT_RIGHT);
-                }
-                // The view to surround is in the bottom half of the screen.
-                else {
-                    skipButtonParams.addRule(ALIGN_PARENT_LEFT);
-                }
-
-                addView(mSkipButton, skipButtonParams);
-                mSkipButton.setOnClickListener(skipWalkThroughClickListener);
-            }
-        }
-
-        /**
-         * Staring the animation for the views.
-         **/
-        private void animate() {
-            // Animating the views in
-            Animation animation = AnimationUtils.loadAnimation(getContext(), R.anim.tutorial_info_view_fade_in);
-
-            mTutorialInfoView.setAnimation(animation);
-            mGotItButton.setAnimation(animation);
-
-            if (mSkipButton != null) mSkipButton.setAnimation(animation);
-
-            if (mTitleView != null) mTitleView.setAnimation(animation);
-
-            animation.start();
-        }
-    };
+    public interface TutorialClosedListener {
+        public void onClosed();
+    }
 }
